@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>静态文件服务器</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    /* ==================== 设计变量 ==================== */
+    :root {
+      --bg: #0a0e14;
+      --bg-elevated: #0f1419;
+      --bg-card: #131920;
+      --bg-hover: #1a2230;
+      --fg: #e6e6e6;
+      --fg-muted: #6b7d93;
+      --fg-dim: #3d4f63;
+      --accent: #00e5a0;
+      --accent-dim: rgba(0, 229, 160, 0.1);
+      --accent-glow: rgba(0, 229, 160, 0.25);
+      --danger: #ff5c5c;
+      --danger-dim: rgba(255, 92, 92, 0.1);
+      --warning: #ffc145;
+      --info: #45a5ff;
+      --border: #1e2a38;
+      --border-light: #253344;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --font-ui: 'Noto Sans SC', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ==================== 基础重置 ==================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 15px; scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-ui);
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ==================== 背景氛围 ==================== */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -30%; left: -10%;
+      width: 60vw; height: 60vw;
+      background: radial-gradient(circle, rgba(0,229,160,0.04) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      animation: floatBlob 20s ease-in-out infinite alternate;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -20%; right: -15%;
+      width: 50vw; height: 50vw;
+      background: radial-gradient(circle, rgba(69,165,255,0.03) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      animation: floatBlob 25s ease-in-out infinite alternate-reverse;
+    }
+
+    @keyframes floatBlob {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(40px, -30px) scale(1.1); }
+    }
+
+    /* ==================== 布局 ==================== */
+    .app {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+      gap: 0;
+    }
+
+    /* ==================== 顶栏 ==================== */
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      height: 60px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.3px;
+    }
+
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), #00b880);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      color: var(--bg);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ==================== 侧边栏 ==================== */
+    aside {
+      background: var(--bg-elevated);
+      border-right: 1px solid var(--border);
+      padding: 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow-y: auto;
+      height: calc(100vh - 60px);
+      position: sticky;
+      top: 60px;
+    }
+
+    .nav-section-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--fg-dim);
+      padding: 16px 20px 6px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 20px;
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--fg-muted);
+      font-size: 0.9rem;
+      font-weight: 400;
+      border-left: 3px solid transparent;
+      user-select: none;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--fg);
+    }
+
+    .nav-item.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-left-color: var(--accent);
+      font-weight: 500;
+    }
+
+    .nav-item i {
+      width: 18px;
+      text-align: center;
+      font-size: 0.85rem;
+    }
+
+    /* ==================== 主内容区 ==================== */
+    main {
+      padding: 28px 32px;
+      overflow-y: auto;
+      height: calc(100vh - 60px);
+    }
+
+    .page { display: none; animation: fadeIn 0.3s ease; }
+    .page.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ==================== 页面标题 ==================== */
+    .page-title {
+      font-size: 1.7rem;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .page-desc {
+      color: var(--fg-muted);
+      font-size: 0.88rem;
+      margin-bottom: 28px;
+      font-weight: 300;
+    }
+
+    /* ==================== 卡片 ==================== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      border-color: var(--border-light);
+    }
+
+    .card-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--fg-muted);
+      margin-bottom: 14px;
+    }
+
+    /* ==================== 状态页网格 ==================== */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      transition: var(--transition);
+    }
+
+    .stat-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-dim);
+      transform: translateY(-2px);
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--fg-dim);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .stat-value.accent { color: var(--accent); }
+    .stat-value.info { color: var(--info); }
+    .stat-value.warning { color: var(--warning); }
+
+    .stat-sub {
+      font-size: 0.75rem;
+      color: var(--fg-dim);
+      margin-top: 4px;
+      font-family: var(--font-mono);
+    }
+
+    /* ==================== 运行时间条 ==================== */
+    .uptime-bar-wrap {
+      margin-top: 4px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .uptime-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #00b880);
+      border-radius: 2px;
+      transition: width 1s linear;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    /* ==================== 内存条 ==================== */
+    .mem-bar-wrap {
+      margin-top: 8px;
+    }
+    .mem-bar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .mem-bar-label {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      width: 80px;
+      flex-shrink: 0;
+    }
+    .mem-bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .mem-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.8s ease;
+    }
+    .mem-bar-fill.heap { background: var(--accent); }
+    .mem-bar-fill.rss { background: var(--info); }
+    .mem-bar-fill.ext { background: var(--warning); }
+    .mem-bar-val {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--fg-muted);
+      width: 60px;
+      text-align: right;
+    }
+
+    /* ==================== 文件列表 ==================== */
+    .file-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--fg-muted);
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .breadcrumb-item {
+      cursor: pointer;
+      transition: var(--transition);
+      padding: 3px 6px;
+      border-radius: var(--radius-sm);
+    }
+
+    .breadcrumb-item:hover {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .breadcrumb-sep {
+      color: var(--fg-dim);
+      font-size: 0.7rem;
+    }
+
+    .file-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .file-table thead th {
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--fg-dim);
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      transition: var(--transition);
+    }
+
+    .file-table thead th:hover {
+      color: var(--fg-muted);
+    }
+
+    .file-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: var(--transition);
+    }
+
+    .file-table tbody tr:hover {
+      background: var(--bg-hover);
+    }
+
+    .file-table tbody td {
+      padding: 10px 14px;
+      font-size: 0.88rem;
+    }
+
+    .file-name-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-icon {
+      width: 30px; height: 30px;
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+
+    .file-icon.dir {
+      background: rgba(255, 193, 69, 0.1);
+      color: var(--warning);
+    }
+
+    .file-icon.img {
+      background: rgba(0, 229, 160, 0.1);
+      color: var(--accent);
+    }
+
+    .file-icon.code {
+      background: rgba(69, 165, 255, 0.1);
+      color: var(--info);
+    }
+
+    .file-icon.doc {
+      background: rgba(255, 92, 92, 0.1);
+      color: var(--danger);
+    }
+
+    .file-icon.default {
+      background: var(--border);
+      color: var(--fg-muted);
+    }
+
+    .file-link {
+      color: var(--fg);
+      text-decoration: none;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+
+    .file-link:hover {
+      color: var(--accent);
+    }
+
+    .file-link.dir-link {
+      font-weight: 500;
+    }
+
+    .file-size, .file-time {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--fg-muted);
+    }
+
+    .file-actions-cell {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: var(--transition);
+    }
+
+    .file-table tbody tr:hover .file-actions-cell {
+      opacity: 1;
+    }
+
+    .btn-icon {
+      width: 30px; height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      font-size: 0.8rem;
+      transition: var(--transition);
+    }
+
+    .btn-icon:hover {
+      background: var(--bg-card);
+      color: var(--fg);
+    }
+
+    .btn-icon.danger:hover {
+      background: var(--danger-dim);
+      color: var(--danger);
+    }
+
+    /* ==================== 按钮 ==================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--fg);
+      font-size: 0.85rem;
+      font-family: var(--font-ui);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--transition);
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--border-light);
+      background: var(--bg-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+      font-weight: 500;
+    }
+
+    .btn-primary:hover {
+      background: #00cc8e;
+      border-color: #00cc8e;
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+    }
+
+    .btn-danger {
+      border-color: rgba(255,92,92,0.3);
+      color: var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger-dim);
+      border-color: var(--danger);
+    }
+
+    /* ==================== 上传区域 ==================== */
+    .upload-zone {
+      border: 2px dashed var(--border-light);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      transition: var(--transition);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .upload-zone.dragover {
+      box-shadow: 0 0 30px var(--accent-dim);
+    }
+
+    .upload-icon {
+      font-size: 2.5rem;
+      color: var(--fg-dim);
+      margin-bottom: 16px;
+      transition: var(--transition);
+    }
+
+    .upload-zone:hover .upload-icon {
+      color: var(--accent);
+      transform: translateY(-4px);
+    }
+
+    .upload-text {
+      font-size: 0.95rem;
+      color: var(--fg-muted);
+      margin-bottom: 6px;
+    }
+
+    .upload-hint {
+      font-size: 0.78rem;
+      color: var(--fg-dim);
+    }
+
+    .upload-input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    /* ==================== 上传进度列表 ==================== */
+    .upload-list {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .upload-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      animation: fadeIn 0.3s ease;
+    }
+
+    .upload-item-icon {
+      color: var(--accent);
+      font-size: 1rem;
+    }
+
+    .upload-item-name {
+      flex: 1;
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .upload-item-size {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+    }
+
+    .upload-item-status {
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+
+    .upload-item-status.success { color: var(--accent); }
+    .upload-item-status.error { color: var(--danger); }
+    .upload-item-status.uploading { color: var(--warning); }
+
+    /* ==================== 终端日志 ==================== */
+    .terminal {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #111;
+      border-bottom: 1px solid #222;
+    }
+
+    .terminal-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red { background: #ff5f57; }
+    .terminal-dot.yellow { background: #febc2e; }
+    .terminal-dot.green { background: #28c840; }
+
+    .terminal-title {
+      flex: 1;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #666;
+    }
+
+    .terminal-body {
+      padding: 14px;
+      height: 340px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.7;
+      color: #888;
+    }
+
+    .terminal-body::-webkit-scrollbar {
+      width: 6px;
+    }
+    .terminal-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .terminal-body::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 10px;
+      padding: 1px 0;
+    }
+
+    .log-time {
+      color: #444;
+      flex-shrink: 0;
+    }
+
+    .log-method {
+      font-weight: 600;
+      flex-shrink: 0;
+      width: 48px;
+    }
+
+    .log-method.get { color: #00e5a0; }
+    .log-method.post { color: #45a5ff; }
+    .log-method.delete { color: #ff5c5c; }
+
+    .log-path { color: #ccc; }
+    .log-status { color: #666; }
+    .log-status.ok { color: #28c840; }
+    .log-status.err { color: #ff5c5c; }
+
+    /* ==================== Toast 通知 ==================== */
+    .toast-container {
+      position: fixed;
+      top: 72px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.3s ease;
+      box-shadow: var(--shadow);
+      max-width: 360px;
+    }
+
+    .toast.success {
+      background: #0d2818;
+      border: 1px solid rgba(0,229,160,0.3);
+      color: var(--accent);
+    }
+
+    .toast.error {
+      background: #2a0f0f;
+      border: 1px solid rgba(255,92,92,0.3);
+      color: var(--danger);
+    }
+
+    .toast.info {
+      background: #0d1a2a;
+      border: 1px solid rgba(69,165,255,0.3);
+      color: var(--info);
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateX(0); }
+      to { opacity: 0; transform: translateX(20px); }
+    }
+
+    /* ==================== 模态框 ==================== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: none;
+      place-items: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal-overlay.show {
+      display: grid;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 90%;
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      animation: modalIn 0.25s ease;
+    }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .modal-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .modal-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    /* ==================== 空状态 ==================== */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--fg-dim);
+    }
+
+    .empty-state i {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .empty-state p {
+      font-size: 0.9rem;
+    }
+
+    /* ==================== 加载动画 ==================== */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ==================== 状态指示器 ==================== */
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: inline-block;
+      box-shadow: 0 0 8px var(--accent-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ==================== 配置页 ==================== */
+    .config-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .config-table tr {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .config-table td {
+      padding: 12px 14px;
+      font-size: 0.88rem;
+    }
+
+    .config-table td:first-child {
+      color: var(--fg-muted);
+      font-weight: 500;
+      width: 180px;
+    }
+
+    .config-table td:last-child {
+      font-family: var(--font-mono);
+      color: var(--fg);
+      font-size: 0.82rem;
+    }
+
+    /* ==================== 响应式 ==================== */
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+      aside {
+        display: none;
+        position: fixed;
+        left: 0; top: 60px;
+        width: 260px;
+        height: calc(100vh - 60px);
+        z-index: 200;
+        box-shadow: var(--shadow);
+      }
+      aside.open {
+        display: flex;
+      }
+      .mobile-toggle {
+        display: flex !important;
+      }
+      main {
+        height: auto;
+        min-height: calc(100vh - 60px);
+      }
+    }
+
+    .mobile-toggle {
+      display: none;
+      width: 36px; height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--fg);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      place-items: center;
+      font-size: 1.1rem;
+    }
+
+    /* ==================== 滚动条 ==================== */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--fg-dim);
+    }
+
+    /* ==================== 减弱动画偏好 ==================== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- 顶栏 -->
+  <header>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="mobile-toggle" onclick="toggleSidebar()" aria-label="切换菜单">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="logo">
+        <div class="logo-icon"><i class="fas fa-server"></i></div>
+        <span>Static Server</span>
+      </div>
+      <span class="status-dot" title="运行中"></span>
+    </div>
+    <div class="header-actions">
+      <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--fg-dim);" id="headerUptime">--</span>
+    </div>
+  </header>
+
+  <!-- 侧边栏 -->
+  <aside id="sidebar">
+    <div class="nav-section-title">概览</div>
+    <div class="nav-item active" data-page="status" onclick="switchPage('status', this)">
+      <i class="fas fa-chart-line"></i> 服务器状态
+    </div>
+    <div class="nav-item" data-page="files" onclick="switchPage('files', this)">
+      <i class="fas fa-folder-tree"></i> 文件浏览
+    </div>
+
+    <div class="nav-section-title">操作</div>
+    <div class="nav-item" data-page="upload" onclick="switchPage('upload', this)">
+      <i class="fas fa-cloud-arrow-up"></i> 上传文件
+    </div>
+    <div class="nav-item" data-page="logs" onclick="switchPage('logs', this)">
+      <i class="fas fa-terminal"></i> 请求日志
+    </div>
+
+    <div class="nav-section-title">系统</div>
+    <div class="nav-item" data-page="config" onclick="switchPage('config', this)">
+      <i class="fas fa-gear"></i> 服务器配置
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main>
+    <!-- ========== 状态页 ========== -->
+    <section class="page active" id="page-status">
+      <h1 class="page-title">服务器状态</h1>
+      <p class="page-desc">实时监控服务器运行状况与资源使用</p>
+
+      <div class="status-grid" id="statusGrid">
+        <!-- 动态填充 -->
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="card">
+          <div class="card-title">运行时间</div>
+          <div style="font-family:var(--font-mono);font-size:1.5rem;font-weight:600;" id="uptimeDisplay">--</div>
+          <div class="uptime-bar-wrap">
+            <div class="uptime-bar" id="uptimeBar" style="width:0%"></div>
+          </div>
+          <div class="stat-sub" style="margin-top:8px;" id="startTimeDisplay">启动于 --</div>
+        </div>
+        <div class="card">
+          <div class="card-title">内存使用</div>
+          <div class="mem-bar-wrap" id="memBars">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 文件浏览页 ========== -->
+    <section class="page" id="page-files">
+      <h1 class="page-title">文件浏览</h1>
+      <p class="page-desc">浏览和管理服务器上的静态文件</p>
+
+      <div class="file-toolbar">
+        <div class="breadcrumb" id="breadcrumb">
+          <!-- 动态填充 -->
+        </div>
+        <button class="btn btn-sm" onclick="showMkdirModal()">
+          <i class="fas fa-folder-plus"></i> 新建目录
+        </button>
+        <button class="btn btn-sm" onclick="loadFiles()">
+          <i class="fas fa-rotate"></i> 刷新
+        </button>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th style="width:50%">名称</th>
+              <th style="width:18%">大小</th>
+              <th style="width:22%">修改时间</th>
+              <th style="width:10%">操作</th>
+            </tr>
+          </thead>
+          <tbody id="fileTableBody">
+            <!-- 动态填充 -->
+          </tbody>
+        </table>
+        <div class="empty-state" id="fileEmpty" style="display:none;">
+          <i class="fas fa-folder-open"></i>
+          <p>此目录为空</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 上传页 ========== -->
+    <section class="page" id="page-upload">
+      <h1 class="page-title">上传文件</h1>
+      <p class="page-desc">拖拽文件或点击选择，文件将保存至 /uploads 目录</p>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" class="upload-input" id="uploadInput" multiple>
+        <div class="upload-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+        <div class="upload-text">将文件拖拽到此处，或点击选择文件</div>
+        <div class="upload-hint">支持任意文件类型，可多选</div>
+      </div>
+
+      <div class="upload-list" id="uploadList"></div>
+    </section>
+
+    <!-- ========== 日志页 ========== -->
+    <section class="page" id="page-logs">
+      <h1 class="page-title">请求日志</h1>
+      <p class="page-desc">实时显示服务器收到的 HTTP 请求</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="btn btn-sm" onclick="clearLogs()">
+          <i class="fas fa-trash-can"></i> 清空日志
+        </button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--fg-muted);cursor:pointer;">
+          <input type="checkbox" id="autoScroll" checked style="accent-color:var(--accent);"> 自动滚动
+        </label>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">http-request-log</span>
+        </div>
+        <div class="terminal-body" id="logBody">
+          <div class="log-line">
+            <span class="log-time">--:--:--</span>
+            <span class="log-path" style="color:#555;">等待请求...</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 配置页 ========== -->
+    <section class="page" id="page-config">
+      <h1 class="page-title">服务器配置</h1>
+      <p class="page-desc">当前服务器的运行时配置信息</p>
+
+      <div class="card">
+        <div class="card-title">运行参数</div>
+        <table class="config-table" id="configTable">
+          <!-- 动态填充 -->
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">支持的 MIME 类型</div>
+        <div id="mimeList" style="display:flex;flex-wrap:wrap;gap:6px;padding-top:4px;">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 新建目录模态框 -->
+<div class="modal-overlay" id="mkdirModal">
+  <div class="modal">
+    <div class="modal-title">新建目录</div>
+    <div style="font-size:0.85rem;color:var(--fg-muted);margin-bottom:12px;">
+      将在当前路径下创建：<span id="mkdirPath" style="color:var(--accent);font-family:var(--font-mono);"></span>
+    </div>
+    <input class="modal-input" id="mkdirInput" placeholder="目录名称" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-sm" onclick="closeMkdirModal()">取消</button>
+      <button class="btn btn-sm btn-primary" onclick="createDir()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--danger);">确认删除</div>
+    <div style="font-size:0.88rem;color:var(--fg-muted);margin-bottom:4px;">
+      确定要删除以下文件吗？此操作不可撤销。
+    </div>
+    <div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--fg);padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);margin-top:10px;word-break:break-all;" id="deletePath"></div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" onclick="closeDeleteModal()">取消</button>
+      <button class="btn btn-sm btn-danger" onclick="confirmDelete()">删除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==================== 状态管理 ====================
+  let currentPath = '/';
+  let pendingDeletePath = null;
+  let serverStatus = null;
+  const logEntries = [];
+
+  // ==================== 页面切换 ====================
+  function switchPage(pageId, navEl) {
+    // 更新导航
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    if (navEl) navEl.classList.add('active');
+
+    // 更新页面
+    document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+    const page = document.getElementById('page-' + pageId);
+    if (page) page.classList.add('active');
+
+    // 关闭移动端侧边栏
+    document.getElementById('sidebar').classList.remove('open');
+
+    // 页面进入时刷新数据
+    if (pageId === 'status') refreshStatus();
+    if (pageId === 'files') loadFiles();
+    if (pageId === 'config') loadConfig();
+  }
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+  }
+
+  // ==================== Toast 通知 ====================
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const icons = { success: 'fa-check-circle', error: 'fa-circle-xmark', info: 'fa-circle-info' };
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.animation = 'toastOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  // ==================== 服务器状态 ====================
+  async function refreshStatus() {
+    try {
+      const resp = await fetch('/api/status');
+      serverStatus = await resp.json();
+      renderStatus(serverStatus);
+    } catch (e) {
+      console.error('获取状态失败:', e);
+    }
+  }
+
+  function renderStatus(s) {
+    // 状态卡片
+    const grid = document.getElementById('statusGrid');
+    grid.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">状态</div>
+        <div class="stat-value accent"><span class="status-dot"></span> 运行中</div>
+        <div class="stat-sub">PID: ${s.pid}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">监听端口</div>
+        <div class="stat-value info">${s.port}</div>
+        <div class="stat-sub">0.0.0.0:${s.port}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Node.js 版本</div>
+        <div class="stat-value">${s.nodeVersion}</div>
+        <div class="stat-sub">${s.platform} / ${s.arch}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">RSS 内存</div>
+        <div class="stat-value warning">${s.memory.rss}</div>
+        <div class="stat-sub">堆: ${s.memory.heapUsed} / ${s.memory.heapTotal}</div>
+      </div>
+    `;
+
+    // 运行时间
+    document.getElementById('uptimeDisplay').textContent = s.uptime;
+    document.getElementById('startTimeDisplay').textContent = '启动于 ' + s.startTime;
+    document.getElementById('headerUptime').textContent = s.uptime;
+
+    // 运行时间条（24小时为一圈）
+    const pct = Math.min((s.uptimeSeconds / 86400) * 100, 100);
+    document.getElementById('uptimeBar').style.width = pct + '%';
+
+    // 内存条
+    const heapPct = parseFloat(s.memory.heapUsed) / parseFloat(s.memory.heapTotal) * 100;
+    // 估算 RSS 基数（假设 64MB 基准）
+    const rssNum = parseFloat(s.memory.rss);
+    const rssPct = Math.min(rssNum / (64 * 1024) * 100, 100);
+    const extNum = parseFloat(s.memory.external);
+    const extPct = Math.min(extNum / 1024 * 100, 100);
+
+    document.getElementById('memBars').innerHTML = `
+      <div class="mem-bar-item">
+        <span class="mem-bar-label">Heap Used</span>
+        <div class="mem-bar-track"><div class="mem-bar-fill heap" style="width:${heapPct}%"></div></div>
+        <span class="mem-bar-val">${s.memory.heapUsed}</span>
+      </div>
+      <div class="mem-bar-item">
+        <span class="mem-bar-label">RSS</span>
+        <div class="mem-bar-track"><div class="mem-bar-fill rss" style="width:${rssPct}%"></div></div>
+        <span class="mem-bar-val">${s.memory.rss}</span>
+      </div>
+      <div class="mem-bar-item">
+        <span class="mem-bar-label">External</span>
+        <div class="mem-bar-track"><div class="mem-bar-fill ext" style="width:${extPct}%"></div></div>
+        <span class="mem-bar-val">${s.memory.external}</span>
+      </div>
+    `;
+  }
+
+  // ==================== 文件浏览 ====================
+  function formatSizeUI(bytes) {
+    if (bytes === null || bytes === undefined) return '--';
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+  }
+
+  function formatTimeUI(dateStr) {
+    const d = new Date(dateStr);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function getFileIconClass(name, isDir) {
+    if (isDir) return 'dir';
+    const ext = name.split('.').pop().toLowerCase();
+    if (['png','jpg','jpeg','gif','svg','webp','ico','bmp'].includes(ext)) return 'img';
+    if (['js','ts','jsx','tsx','html','css','json','xml','yaml','yml','md','py','rb','go','rs','java','c','cpp','h','sh','bat'].includes(ext)) return 'code';
+    if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','csv'].includes(ext)) return 'doc';
+    return 'default';
+  }
+
+  function getFileIconFA(name, isDir) {
+    if (isDir) return 'fa-folder';
+    const ext = name.split('.').pop().toLowerCase();
+    const map = {
+      'html': 'fa-html5', 'css': 'fa-css3-alt', 'js': 'fa-js',
+      'json': 'fa-brackets-curly', 'png': 'fa-image', 'jpg': 'fa-image',
+      'jpeg': 'fa-image', 'gif': 'fa-image', 'svg': 'fa-image',
+      'webp': 'fa-image', 'pdf': 'fa-file-pdf', 'zip': 'fa-file-zipper',
+      'mp3': 'fa-file-audio', 'mp4': 'fa-file-video',
+      'md': 'fa-file-lines', 'txt': 'fa-file-lines',
+    };
+    return map[ext] || 'fa-file';
+  }
+
+  async function loadFiles(dirPath) {
+    if (dirPath !== undefined) currentPath = dirPath;
+    try {
+      const resp = await fetch('/api/files?path=' + encodeURIComponent(currentPath));
+      const data = await resp.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+        return;
+      }
+      renderFiles(data);
+    } catch (e) {
+      showToast('加载文件列表失败', 'error');
+    }
+  }
+
+  function renderFiles(data) {
+    currentPath = data.path;
+
+    // 面包屑
+    const bc = document.getElementById('breadcrumb');
+    const parts = currentPath.split('/').filter(Boolean);
+    let bcHtml = `<span class="breadcrumb-item" onclick="loadFiles('/')"><i class="fas fa-home" style="font-size:0.85rem;"></i></span>`;
+    let accumulated = '';
+    parts.forEach((part, i) => {
+      accumulated += '/' + part;
+      const p = accumulated;
+      const isLast = i === parts.length - 1;
+      bcHtml += `<span class="breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>`;
+      bcHtml += `<span class="breadcrumb-item" style="${isLast ? 'color:var(--fg);font-weight:500;' : ''}" onclick="loadFiles('${p}')">${part}</span>`;
+    });
+    bc.innerHTML = bcHtml;
+
+    // 文件表格
+    const tbody = document.getElementById('fileTableBody');
+    const empty = document.getElementById('fileEmpty');
+
+    if (!data.items || data.items.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    tbody.innerHTML = data.items.map(item => {
+      const iconClass = getFileIconClass(item.name, item.isDir);
+      const iconFA = getFileIconFA(item.name, item.isDir);
+      const nameLink = item.isDir
+        ? `<span class="file-link dir-link" onclick="loadFiles('${item.path}')">${item.name}</span>`
+        : `<a class="file-link" href="${item.path}" target="_blank">${item.name}</a>`;
+
+      return `
+        <tr>
+          <td>
+            <div class="file-name-cell">
+              <div class="file-icon ${iconClass}"><i class="fas ${iconFA}"></i></div>
+              ${nameLink}
+            </div>
+          </td>
+          <td class="file-size">${item.isDir ? '--' : formatSizeUI(item.size)}</td>
+          <td class="file-time">${formatTimeUI(item.modified)}</td>
+          <td>
+            <div class="file-actions-cell">
+              <button class="btn-icon danger" title="删除" onclick="showDeleteModal('${item.path}', ${item.isDir})">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ==================== 新建目录 ====================
+  function showMkdirModal() {
+    document.getElementById('mkdirPath').textContent = currentPath;
+    document.getElementById('mkdirInput').value = '';
+    document.getElementById('mkdirModal').classList.add('show');
+    setTimeout(() => document.getElementById('mkdirInput').focus(), 100);
+  }
+
+  function closeMkdirModal() {
+    document.getElementById('mkdirModal').classList.remove('show');
+  }
+
+  async function createDir() {
+    const name = document.getElementById('mkdirInput').value.trim();
+    if (!name) {
+      showToast('请输入目录名称', 'error');
+      return;
+    }
+    // 安全检查
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+      showToast('目录名称不能包含特殊字符', 'error');
+      return;
+    }
+
+    const dirPath = (currentPath === '/' ? '/' : currentPath + '/') + name;
+    closeMkdirModal();
+
+    try {
+      const resp = await fetch('/api/mkdir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dirPath }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast(data.message, 'success');
+        loadFiles();
+      }
+    } catch (e) {
+      showToast('创建目录失败', 'error');
+    }
+  }
+
+  // 回车创建
+  document.getElementById('mkdirInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') createDir();
+    if (e.key === 'Escape') closeMkdirModal();
+  });
+
+  // ==================== 删除文件 ====================
+  function showDeleteModal(filePath, isDir) {
+    pendingDeletePath = filePath;
+    document.getElementById('deletePath').textContent = filePath + (isDir ? ' (目录)' : '');
+    document.getElementById('deleteModal').classList.add('show');
+  }
+
+  function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('show');
+    pendingDeletePath = null;
+  }
+
+  async function confirmDelete() {
+    if (!pendingDeletePath) return;
+    const filePath = pendingDeletePath;
+    closeDeleteModal();
+
+    try {
+      const resp = await fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        showToast(data.error, 'error');
+      } else {
+        showToast(data.message, 'success');
+        loadFiles();
+      }
+    } catch (e) {
+      showToast('删除失败', 'error');
+    }
+  }
+
+  // ==================== 文件上传 ====================
+  const uploadZone = document.getElementById('uploadZone');
+  const uploadInput = document.getElementById('uploadInput');
+
+  uploadZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+  });
+
+  uploadZone.addEventListener('dragleave', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+  });
+
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) {
+      handleUpload(e.dataTransfer.files);
+    }
+  });
+
+  uploadInput.addEventListener('change', e => {
+    if (e.target.files.length > 0) {
+      handleUpload(e.target.files);
+      e.target.value = ''; // 重置，允许再次选同文件
+    }
+  });
+
+  async function handleUpload(files) {
+    const list = document.getElementById('uploadList');
+
+    for (const file of files) {
+      // 添加上传项
+      const item = document.createElement('div');
+      item.className = 'upload-item';
+      item.innerHTML = `
+        <span class="upload-item-icon"><i class="fas fa-spinner fa-spin"></i></span>
+        <span class="upload-item-name">${file.name}</span>
+        <span class="upload-item-size">${formatSizeUI(file.size)}</span>
+        <span class="upload-item-status uploading">上传中</span>
+      `;
+      list.prepend(item);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const resp = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await resp.json();
+
+        if (data.error) throw new Error(data.error);
+
+        item.querySelector('.upload-item-icon').innerHTML = '<i class="fas fa-check-circle"></i>';
+        item.querySelector('.upload-item-status').className = 'upload-item-status success';
+        item.querySelector('.upload-item-status').textContent = '完成';
+      } catch (e) {
+        item.querySelector('.upload-item-icon').innerHTML = '<i class="fas fa-circle-xmark"></i>';
+        item.querySelector('.upload-item-icon').style.color = 'var(--danger)';
+        item.querySelector('.upload-item-status').className = 'upload-item-status error';
+        item.querySelector('.upload-item-status').textContent = '失败';
+      }
+    }
+
+    showToast(`已上传 ${files.length} 个文件到 /uploads`, 'success');
+    // 刷新文件列表（如果当前在上传目录）
+    if (currentPath === '/uploads') loadFiles();
+  }
+
+  // ==================== 请求日志 ====================
+  // 由于无法真正拦截所有请求，我们用模拟日志 + 定时获取状态来展示
+  const logBody = document.getElementById('logBody');
+  let logInitialized = false;
+
+  // 生成模拟日志（基于真实的页面请求）
+  function addLogEntry(method, path, status) {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const methodClass = method.toLowerCase();
+    const statusClass = status < 400 ? 'ok' : 'err';
+
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-method ${methodClass}">${method.padEnd(6)}</span>
+      <span class="log-path">${path}</span>
+      <span class="log-status ${statusClass}">${status}</span>
+    `;
+
+    // 移除初始占位
+    if (!logInitialized) {
+      logBody.innerHTML = '';
+      logInitialized = true;
+    }
+
+    logBody.appendChild(line);
+
+    // 限制日志数量
+    while (logBody.children.length > 200) {
+      logBody.removeChild(logBody.firstChild);
+    }
+
+    // 自动滚动
+    if (document.getElementById('autoScroll').checked) {
+      logBody.scrollTop = logBody.scrollHeight;
+    }
+  }
+
+  // 拦截 fetch 请求来记录日志
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    const options = args[1] || {};
+    const method = (options.method || 'GET').toUpperCase();
+
+    try {
+      const resp = await originalFetch.apply(this, args);
+      addLogEntry(method, url, resp.status);
+      return resp;
+    } catch (e) {
+      addLogEntry(method, url, 0);
+      throw e;
+    }
+  };
+
+  function clearLogs() {
+    logBody.innerHTML = '';
+    logInitialized = false;
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-time">--:--:--</span><span class="log-path" style="color:#555;">日志已清空，等待新请求...</span>`;
+    logBody.appendChild(line);
+  }
+
+  // ==================== 配置页 ====================
+  async function loadConfig() {
+    try {
+      const resp = await fetch('/api/status');
+      const s = await resp.json();
+
+      document.getElementById('configTable').innerHTML = `
+        <tr><td>监听地址</td><td>0.0.0.0</td></tr>
+        <tr><td>监听端口</td><td>${s.port}</td></tr>
+        <tr><td>静态根目录</td><td>${s.rootDir}</td></tr>
+        <tr><td>默认首页</td><td>index.html</td></tr>
+        <tr><td>缓存时间</td><td>3600 秒 (1 小时)</td></tr>
+        <tr><td>上传目录</td><td>${s.rootDir}/uploads</td></tr>
+        <tr><td>断点续传</td><td>已启用</td></tr>
+        <tr><td>目录列表</td><td>已禁用 (仅通过面板查看)</td></tr>
+        <tr><td>路径穿越防护</td><td>已启用</td></tr>
+        <tr><td>Node.js 版本</td><td>${s.nodeVersion}</td></tr>
+        <tr><td>操作系统</td><td>${s.platform} ${s.arch}</td></tr>
+        <tr><td>进程 PID</td><td>${s.pid}</td></tr>
+      `;
+    } catch (e) {
+      showToast('加载配置失败', 'error');
+    }
+
+    // MIME 类型列表
+    const mimes = [
+      '.html', '.css', '.js', '.json', '.png', '.jpg', '.gif', '.svg', '.webp', '.ico',
+      '.pdf', '.zip', '.mp3', '.mp4', '.webm', '.woff', '.woff2', '.ttf', '.md', '.txt', '.xml', '.csv'
+    ];
+    document.getElementById('mimeList').innerHTML = mimes.map(m =>
+      `<span style="padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-family:var(--font-mono);font-size:0.75rem;color:var(--fg-muted);">${m}</span>`
+    ).join('');
+  }
+
+  // ==================== 模态框关闭（点击遮罩） ====================
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) {
+        overlay.classList.remove('show');
+      }
+    });
+  });
+
+  // ==================== 定时刷新状态 ====================
+  setInterval(refreshStatus, 5000);
+
+  // ==================== 初始化 ====================
+  refreshStatus();
+  loadFiles('/');
+</script>
+
+</body>
+</html>
