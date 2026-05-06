@@ -1,14 +1,19 @@
 {
   "name": "project",
   "version": "1.0.0",
-  "main": "serve.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node serve.js",
-    "dev": "node --watch serve.js"
+    "dev:fe": "vite",
+    "build": "vite build",
+    "start": "node server.js",
+    "preview": "vite build && node server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "vite": "^8.0.10"
+  }
 }

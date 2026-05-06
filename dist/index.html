@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>静态文件服务器</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-ibjkYwX6.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DvsLczXR.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- 顶栏 -->
+  <header>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="mobile-toggle" onclick="toggleSidebar()" aria-label="切换菜单">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="logo">
+        <div class="logo-icon"><i class="fas fa-server"></i></div>
+        <span>Static Server</span>
+      </div>
+      <span class="status-dot" title="运行中"></span>
+    </div>
+    <div class="header-actions">
+      <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--fg-dim);" id="headerUptime">--</span>
+    </div>
+  </header>
+
+  <!-- 侧边栏 -->
+  <aside id="sidebar">
+    <div class="nav-section-title">概览</div>
+    <div class="nav-item active" data-page="status" onclick="switchPage('status', this)">
+      <i class="fas fa-chart-line"></i> 服务器状态
+    </div>
+    <div class="nav-item" data-page="files" onclick="switchPage('files', this)">
+      <i class="fas fa-folder-tree"></i> 文件浏览
+    </div>
+
+    <div class="nav-section-title">操作</div>
+    <div class="nav-item" data-page="upload" onclick="switchPage('upload', this)">
+      <i class="fas fa-cloud-arrow-up"></i> 上传文件
+    </div>
+    <div class="nav-item" data-page="logs" onclick="switchPage('logs', this)">
+      <i class="fas fa-terminal"></i> 请求日志
+    </div>
+
+    <div class="nav-section-title">系统</div>
+    <div class="nav-item" data-page="config" onclick="switchPage('config', this)">
+      <i class="fas fa-gear"></i> 服务器配置
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main>
+    <!-- ========== 状态页 ========== -->
+    <section class="page active" id="page-status">
+      <h1 class="page-title">服务器状态</h1>
+      <p class="page-desc">实时监控服务器运行状况与资源使用</p>
+
+      <div class="status-grid" id="statusGrid">
+        <!-- 动态填充 -->
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="card">
+          <div class="card-title">运行时间</div>
+          <div style="font-family:var(--font-mono);font-size:1.5rem;font-weight:600;" id="uptimeDisplay">--</div>
+          <div class="uptime-bar-wrap">
+            <div class="uptime-bar" id="uptimeBar" style="width:0%"></div>
+          </div>
+          <div class="stat-sub" style="margin-top:8px;" id="startTimeDisplay">启动于 --</div>
+        </div>
+        <div class="card">
+          <div class="card-title">内存使用</div>
+          <div class="mem-bar-wrap" id="memBars">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 文件浏览页 ========== -->
+    <section class="page" id="page-files">
+      <h1 class="page-title">文件浏览</h1>
+      <p class="page-desc">浏览和管理服务器上的静态文件</p>
+
+      <div class="file-toolbar">
+        <div class="breadcrumb" id="breadcrumb">
+          <!-- 动态填充 -->
+        </div>
+        <button class="btn btn-sm" onclick="showMkdirModal()">
+          <i class="fas fa-folder-plus"></i> 新建目录
+        </button>
+        <button class="btn btn-sm" onclick="loadFiles()">
+          <i class="fas fa-rotate"></i> 刷新
+        </button>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th style="width:50%">名称</th>
+              <th style="width:18%">大小</th>
+              <th style="width:22%">修改时间</th>
+              <th style="width:10%">操作</th>
+            </tr>
+          </thead>
+          <tbody id="fileTableBody">
+            <!-- 动态填充 -->
+          </tbody>
+        </table>
+        <div class="empty-state" id="fileEmpty" style="display:none;">
+          <i class="fas fa-folder-open"></i>
+          <p>此目录为空</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 上传页 ========== -->
+    <section class="page" id="page-upload">
+      <h1 class="page-title">上传文件</h1>
+      <p class="page-desc">拖拽文件或点击选择，文件将保存至 /uploads 目录</p>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" class="upload-input" id="uploadInput" multiple>
+        <div class="upload-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+        <div class="upload-text">将文件拖拽到此处，或点击选择文件</div>
+        <div class="upload-hint">支持任意文件类型，可多选</div>
+      </div>
+
+      <div class="upload-list" id="uploadList"></div>
+    </section>
+
+    <!-- ========== 日志页 ========== -->
+    <section class="page" id="page-logs">
+      <h1 class="page-title">请求日志</h1>
+      <p class="page-desc">实时显示服务器收到的 HTTP 请求</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="btn btn-sm" onclick="clearLogs()">
+          <i class="fas fa-trash-can"></i> 清空日志
+        </button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--fg-muted);cursor:pointer;">
+          <input type="checkbox" id="autoScroll" checked style="accent-color:var(--accent);"> 自动滚动
+        </label>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">http-request-log</span>
+        </div>
+        <div class="terminal-body" id="logBody">
+          <div class="log-line">
+            <span class="log-time">--:--:--</span>
+            <span class="log-path" style="color:#555;">等待请求...</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 配置页 ========== -->
+    <section class="page" id="page-config">
+      <h1 class="page-title">服务器配置</h1>
+      <p class="page-desc">当前服务器的运行时配置信息</p>
+
+      <div class="card">
+        <div class="card-title">运行参数</div>
+        <table class="config-table" id="configTable">
+          <!-- 动态填充 -->
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">支持的 MIME 类型</div>
+        <div id="mimeList" style="display:flex;flex-wrap:wrap;gap:6px;padding-top:4px;">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 新建目录模态框 -->
+<div class="modal-overlay" id="mkdirModal">
+  <div class="modal">
+    <div class="modal-title">新建目录</div>
+    <div style="font-size:0.85rem;color:var(--fg-muted);margin-bottom:12px;">
+      将在当前路径下创建：<span id="mkdirPath" style="color:var(--accent);font-family:var(--font-mono);"></span>
+    </div>
+    <input class="modal-input" id="mkdirInput" placeholder="目录名称" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-sm" onclick="closeMkdirModal()">取消</button>
+      <button class="btn btn-sm btn-primary" onclick="createDir()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--danger);">确认删除</div>
+    <div style="font-size:0.88rem;color:var(--fg-muted);margin-bottom:4px;">
+      确定要删除以下文件吗？此操作不可撤销。
+    </div>
+    <div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--fg);padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);margin-top:10px;word-break:break-all;" id="deletePath"></div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" onclick="closeDeleteModal()">取消</button>
+      <button class="btn btn-sm btn-danger" onclick="confirmDelete()">删除</button>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>
