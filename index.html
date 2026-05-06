@@ -30,23 +30,23 @@
   <!-- 侧边栏 -->
   <aside id="sidebar">
     <div class="nav-section-title">概览</div>
-    <div class="nav-item active" data-page="status" onclick="switchPage('status', this)">
+    <div class="nav-item active" data-page="status">
       <i class="fas fa-chart-line"></i> 服务器状态
     </div>
-    <div class="nav-item" data-page="files" onclick="switchPage('files', this)">
+    <div class="nav-item" data-page="files">
       <i class="fas fa-folder-tree"></i> 文件浏览
     </div>
 
     <div class="nav-section-title">操作</div>
-    <div class="nav-item" data-page="upload" onclick="switchPage('upload', this)">
+    <div class="nav-item" data-page="upload">
       <i class="fas fa-cloud-arrow-up"></i> 上传文件
     </div>
-    <div class="nav-item" data-page="logs" onclick="switchPage('logs', this)">
+    <div class="nav-item" data-page="logs">
       <i class="fas fa-terminal"></i> 请求日志
     </div>
 
     <div class="nav-section-title">系统</div>
-    <div class="nav-item" data-page="config" onclick="switchPage('config', this)">
+    <div class="nav-item" data-page="config">
       <i class="fas fa-gear"></i> 服务器配置
     </div>
   </aside>
@@ -139,7 +139,7 @@
       <p class="page-desc">实时显示服务器收到的 HTTP 请求</p>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button class="btn btn-sm" onclick="clearLogs()">
+        <button class="btn btn-sm" id="clearLogsBtn">
           <i class="fas fa-trash-can"></i> 清空日志
         </button>
         <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--fg-muted);cursor:pointer;">

@@ -7,6 +7,15 @@ let serverStatus = null;
 const logEntries = [];
 
 // ==================== 页面切换 ====================
+const sidebar = document.querySelector("#sidebar");
+
+sidebar.addEventListener("click",e => {
+    const navItem = e.target.closest(`.nav-item`);
+    if (!navItem) return;
+    const pageId = navItem.dataset.page;
+    switchPage(pageId,navItem);
+});
+
 function switchPage(pageId, navEl) {
     // 更新导航
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -442,6 +451,12 @@ window.fetch = async function (...args) {
         throw e;
     }
 };
+
+const clearLogsBtn = document.querySelector("#clearLogsBtn");
+
+if (clearLogsBtn){
+    clearLogsBtn.addEventListener("click", clearLogs);
+}
 
 function clearLogs() {
     logBody.innerHTML = '';
